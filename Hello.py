@@ -6,7 +6,6 @@ import tempfile
 import streamlit as st
 from openai import OpenAI
 from dotenv import load_dotenv
-from datasets import load_dataset
 from transformers import pipeline
 from streamlit_mic_recorder import mic_recorder
 from transformers import Speech2TextProcessor, Speech2TextForConditionalGeneration, AutoTokenizer, AutoModelWithLMHead
@@ -25,7 +24,9 @@ def init_openAI():
         OpenAI: Cliente OpenAI
     '''
   load_dotenv()
-  return OpenAI()
+  os.environ["OPENAI_API_KEY"] ="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"
+
+  return OpenAI();
 
 client = init_openAI()
 
@@ -42,16 +43,23 @@ def ensure_reply(temperature, messages):
   attempts = 0
   success = False
 
-  print(messages[1])
   while attempts < 5 and not success:
     try:
         response = client.chat.completions.create(model='gpt-3.5-turbo', messages=messages, temperature=temperature)
-        print(response)
         data     = json.loads(response.choices[0].message.content)
         success  = True
         return data  
     except Exception as e:
         attempts += 1
+
+def get_emotion(text):
+  '''Obtém a análise de emoção por trás de uma entrada de texto.
+
+    Args:
+        text (str): O texto a analisar.
+  '''
+  classifier = pipeline("text-classification", model="ayoubkirouane/BERT-Emotions-Classifier")
+  return classifier(text)
 
 def get_character_response(character_name, user_message, temperature):
   '''Obtém a resposta do personagem para a mensagem do utilizador.
@@ -83,7 +91,6 @@ def get_character_response(character_name, user_message, temperature):
   if 'Player_Inventory' in data:
     st.session_state['player_inventory'] = data['Player_Inventory']
 
-  print(data)
   st.session_state['chat'].append({"Speaker": character_name, "Message": data['Response']})
 
 def handle_voice_input(temperature):
@@ -132,6 +139,7 @@ def handle_user_input(temperature, user_input):
   system_message = {'role': 'system', 'content': system_base_instructions + json_format}
   user_message   = {'role': 'user', 'content': f"Continue the interaction considering:\n {information}"}
 
+  #print(st.session_state['chat'])
   # Obter a resposta
   data = ensure_reply(temperature, [system_message, user_message])
 
@@ -185,8 +193,10 @@ def display_characters():
 def display_story():
   '''Exibe a história na interface do Streamlit.'''
   last_step = st.session_state['chat'][-1]
-  emoji = next((character['Emoji'] for character in st.session_state['characters'] if character['Name'] == last_step['Speaker']), "📖")
-  st.markdown(f"<h5 style='margin-bottom: -30px; margin-top: 20px'> {emoji} {last_step['Speaker']}: </h5>", unsafe_allow_html=True)
+  emoji   = next((character['Emoji'] for character in st.session_state['characters'] if character['Name'] == last_step['Speaker']), "📖")
+  emotion = f", with {get_emotion(last_step['Message'])[0]['label']}" if (last_step['Speaker'] != "Narrator") else ""
+  
+  st.markdown(f"<h5 style='margin-bottom: -30px; margin-top: 20px'> {emoji} {last_step['Speaker']}{emotion}: </h5>", unsafe_allow_html=True)
   st.write(f"\n{last_step['Message']}")
 
 def download_state():
